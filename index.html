@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>漂島：我是一座漂浮的島</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+  <style>
+    /* 配色、影片尺寸與翻頁速度 */
+    :root {
+      --sea: #007BB8;
+      --deep: #003e67;
+      --paper: #f6efe0;
+      --title: #ff998a;
+      --frame-width: 1580px;
+      --frame-height: 840px;
+      --ratio: 16 / 9;
+      --hard-turn: 650ms;
+      --paper-turn: 900ms;
+      color-scheme: dark;
+      font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; color: var(--paper); background: var(--sea); }
+    button {
+      font: inherit;
+      color: inherit;
+      border: 1px solid #ffffff59;
+      background: #ffffff1f;
+      border-radius: 999px;
+      min-width: 48px;
+      min-height: 46px;
+      padding: 0 16px;
+      cursor: pointer;
+    }
+    button:hover { background: #ffffff38; }
+    button:focus-visible { outline: 3px solid #ffe9a8; outline-offset: 3px; }
+    button:disabled { opacity: .4; cursor: default; }
+
+    #app {
+      position: relative;
+      isolation: isolate;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 240px;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 65% 0%, var(--sea) 25%, var(--deep) 100%);
+    }
+    #bubbles { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+    #bubbles i {
+      position: absolute;
+      bottom: calc(-1 * var(--size));
+      left: var(--left);
+      width: var(--size);
+      height: var(--size);
+      border-radius: 50%;
+      border: 1px solid #e3fbff74;
+      background: radial-gradient(circle at 32% 29%, #ffffff61, #a0e7ff0d 61%);
+      animation: rise var(--duration) linear var(--delay) infinite;
+    }
+    @keyframes rise {
+      from { transform: translate(0, 0); opacity: 0; }
+      12%, 77% { opacity: .65; }
+      to { transform: translate(var(--drift), -112dvh); opacity: 0; }
+    }
+
+    .intro {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 20px;
+      overflow: auto;
+    }
+    .intro h1 {
+      margin: 0;
+      color: var(--title);
+      font-size: clamp(4rem, 14vw, 9rem);
+      letter-spacing: .12em;
+      line-height: 1.05;
+      text-shadow: 0 0 36px #fff2af40;
+    }
+    .intro p { margin: 18px 0 9px; font-size: clamp(1.15rem, 3vw, 1.65rem); }
+    .intro small { color: #f6efe0d9; }
+    .choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 28px; }
+    .choices button { min-height: 52px; padding-inline: 25px; }
+    header { padding: 12px 24px 4px; display: flex; align-items: baseline; gap: 12px; }
+    header strong { color: var(--title); font-size: 1.5rem; letter-spacing: .08em; }
+    header span { font-size: .9rem; }
+    main { display: grid; place-items: center; padding: 8px clamp(10px, 3vw, 48px); min-height: 0; }
+
+    #book {
+      height: 100%;
+      width: 100%;
+      max-width: var(--frame-width);
+      max-height: var(--frame-height);
+      container-type: size;
+      display: grid;
+      place-items: center;
+    }
+    #stage {
+      width: min(100cqw, calc(100cqh * var(--ratio)));
+      aspect-ratio: var(--ratio);
+      position: relative;
+      isolation: isolate;
+      perspective: 1650px;
+      touch-action: pan-y;
+      background: #053453;
+      box-shadow: 0 12px 38px #00223754;
+    }
+    .page { position: absolute; inset: 0; display: grid; place-items: center; background: #053453; }
+    #stage.pageflip { perspective: none; }
+    #stage.pageflip > .flip-book { width: 100%; height: 100%; }
+    #stage.pageflip::after { display: none; }
+    .flip-book .page { inset: auto; }
+    .flip-book .page > .page { inset: 0; width: 100%; height: 100%; }
+    .page img, .page video {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      inset: 0;
+      object-fit: contain;
+      user-select: none;
+    }
+    .status, .play { z-index: 1; background: #06324de8; }
+    .status { max-width: 88%; padding: 8px 12px; text-align: center; border-radius: 8px; }
+    .status:empty { display: none; }
+    .outgoing { z-index: 2; pointer-events: none; transform-origin: left center; backface-visibility: hidden; }
+    .outgoing.reverse { transform-origin: right center; }
+    .turn-sheet {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    #stage::after {
+      content: "";
+      position: absolute;
+      z-index: 4;
+      inset: auto 0 0 auto;
+      width: clamp(24px, 8%, 77px);
+      aspect-ratio: 1;
+      pointer-events: none;
+      clip-path: polygon(100% 0, 100% 100%, 0 100%);
+      background: linear-gradient(135deg, #001b36, #001b36 50%, #e9f8fc 55%, #94bac7 76%, #15354d);
+      transform: scale(0);
+      transform-origin: bottom right;
+      transition: transform 200ms ease;
+    }
+    #stage[data-preview="next"]::after { transform: scale(1); }
+    #stage[data-preview="prev"]::after {
+      left: 0;
+      right: auto;
+      transform: scale(-1, 1);
+      transform-origin: center;
+    }
+    #stage[data-corner="top"]::after {
+      top: 0;
+      bottom: auto;
+      clip-path: polygon(0 0, 100% 0, 100% 100%);
+      transform-origin: top right;
+    }
+    #stage[data-preview="prev"][data-corner="top"]::after { transform-origin: center; }
+    #stage[data-preview] { cursor: pointer; }
+    #stage img, #stage video { -webkit-user-drag: none; }
+    #stage.dragging, #stage.dragging * { cursor: grabbing; user-select: none; }
+    .fold-face { background: linear-gradient(var(--fold-angle), #9ba4ab, #f1f3f4 48%, #78828a); }
+    nav {
+      padding: 8px 10px max(12px, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: clamp(6px, 1.6vw, 18px);
+      text-align: center;
+    }
+    #count { min-width: clamp(60px, 8vw, 110px); font-variant-numeric: tabular-nums; }
+    .arrow { font-size: 1.6rem; line-height: 1; }
+    @media (max-width: 480px) {
+      header { padding-inline: 12px; }
+      nav button { min-width: 42px; padding-inline: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #bubbles { display: none; }
+      #stage::after { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="bubbles" aria-hidden="true"></div>
+    <section class="intro" id="intro" aria-labelledby="title">
+      <div>
+        <h1 id="title">漂島</h1>
+        <p>我是一座漂浮的島</p>
+        <small>文・圖／陳佳恩、何伊庭、陳育瑩</small>
+        <div class="choices">
+          <button type="button" id="with-sound">有聲閱讀</button>
+          <button type="button" id="without-sound">安靜閱讀</button>
+        </div>
+      </div>
+    </section>
+
+    <header hidden><strong>漂島</strong><span>我是一座漂浮的島</span></header>
+    <main hidden><div id="book"><div id="stage" aria-label="繪本畫面"></div></div></main>
+    <nav hidden aria-label="繪本控制">
+      <button type="button" class="arrow" id="prev" aria-label="上一頁">‹</button>
+      <output id="count" aria-live="polite">1 / 14</output>
+      <button type="button" class="arrow" id="next" aria-label="下一頁">›</button>
+      <button type="button" id="sound" aria-pressed="true" aria-label="聲音">
+        <span id="sound-label" aria-hidden="true">有聲</span>
+      </button>
+      <button type="button" id="fullscreen">全螢幕</button>
+    </nav>
+  </div>
+
+  <script>
+    "use strict";
+
+    // 素材放在 index.html 旁的 media 資料夾。泡泡數量、音量漸變時間可在這裡調整。
+    const assets = [
+      { image: "cover.jpg", label: "漂島封面" },
+      ...Array.from({ length: 12 }, (_, i) => ({ movie: `${i + 1}.mov` })),
+      { image: "back-cover.jpg", label: "漂島封底" }
+    ];
+    const bubbleCount = 19;
+    const fadeMs = 280;
+    // 音檔放入 media 後即可使用。各頁也可在 assets 加上 poster: "1.jpg"。
+    const audioSettings = {
+      ambient: "ambient.mp3",
+      flip: "flip.wav",
+      normal: .4,
+      ducked: .05,
+      flipVolume: .55
+    };
+    const mediaPath = file => "media/" + file;
+    const byId = id => document.getElementById(id);
+    const app = byId("app");
+    const stage = byId("stage");
+    const prev = byId("prev");
+    const next = byId("next");
+    const sound = byId("sound");
+    const full = byId("fullscreen");
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    const volumeAnimations = new WeakMap();
+    let current = 0;
+    let page;
+    let turning = false;
+    let audible = true;
+    let ready = false;
+    let warmVideo;
+    let verticalCorner = "bottom";
+    let gesture = null;
+    let pageFlip;
+    const ambient = new Audio();
+    const flipSound = new Audio();
+    ambient.preload = flipSound.preload = "none";
+    ambient.loop = true;
+    ambient.volume = 0;
+    flipSound.volume = audioSettings.flipVolume;
+
+    function syncAmbient() {
+      if (audible && ambient.paused && !ambient.error) {
+        if (!ambient.getAttribute("src")) ambient.src = mediaPath(audioSettings.ambient);
+        ambient.play().catch(() => {});
+      }
+      if (ambient.paused) return;
+      const video = page?.video;
+      const ducked = video && !video.paused && !video.ended;
+      fadeVolume(ambient, audible ? (ducked ? audioSettings.ducked : audioSettings.normal) : 0,
+        () => { if (!audible) ambient.pause(); }, audible ? 600 : 400);
+    }
+
+    function playFlipSound() {
+      if (!audible || flipSound.error) return;
+      if (!flipSound.getAttribute("src")) flipSound.src = mediaPath(audioSettings.flip);
+      if (flipSound.readyState) flipSound.currentTime = 0;
+      flipSound.play().catch(() => {});
+    }
+
+    for (let i = 0; i < bubbleCount; i++) {
+      const bubble = document.createElement("i");
+      bubble.style.setProperty("--left", `${Math.random() * 100}%`);
+      bubble.style.setProperty("--size", `${9 + Math.random() * 51}px`);
+      bubble.style.setProperty("--duration", `${13 + Math.random() * 17}s`);
+      bubble.style.setProperty("--delay", `${-Math.random() * 25}s`);
+      bubble.style.setProperty("--drift", `${Math.random() * 110 - 55}px`);
+      byId("bubbles").append(bubble);
+    }
+
+    function makeVideo(file) {
+      const video = document.createElement("video");
+      video.playsInline = true;
+      video.preload = "metadata";
+      video.src = mediaPath(file);
+      return video;
+    }
+
+    function disposeVideo(video) {
+      if (!video) return;
+      cancelAnimationFrame(volumeAnimations.get(video));
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+
+    function primeNext() {
+      const file = assets[current + 1]?.movie;
+      if (warmVideo?.file === file) return;
+      disposeVideo(warmVideo?.video);
+      warmVideo = file ? { file, video: makeVideo(file) } : undefined;
+      if (warmVideo) warmVideo.video.preload = "auto";
+    }
+
+    function makePage(asset) {
+      const element = document.createElement("div");
+      element.className = "page";
+      const status = document.createElement("div");
+      status.className = "status";
+      status.setAttribute("role", "status");
+
+      if (asset.image) {
+        const image = document.createElement("img");
+        image.alt = asset.label;
+        image.addEventListener("error", () => {
+          status.textContent = `找不到 ${mediaPath(asset.image)}`;
+        });
+        image.src = mediaPath(asset.image);
+        element.append(image, status);
+        return { element, image };
+      }
+
+      const video = warmVideo?.file === asset.movie ? warmVideo.video : makeVideo(asset.movie);
+      if (video === warmVideo?.video) warmVideo = undefined;
+      video.preload = "auto";
+      if (asset.poster) video.poster = mediaPath(asset.poster);
+      video.volume = audible ? 1 : 0;
+      video.muted = !audible;
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "play";
+      play.textContent = "播放影片";
+      play.hidden = true;
+      const result = { element, video, status, play };
+
+      function showError() {
+        play.hidden = true;
+        status.textContent = `無法播放 ${asset.movie}。請確認檔案已放入 media 資料夾，且瀏覽器支援影片格式。`;
+      }
+      video.addEventListener("error", showError);
+      video.addEventListener("playing", () => { status.textContent = ""; });
+      video.addEventListener("ended", () => { status.textContent = ""; });
+      for (const event of ["playing", "pause", "ended", "error"]) {
+        video.addEventListener(event, () => { if (page?.video === video) syncAmbient(); });
+      }
+      play.addEventListener("click", () => startVideo(result));
+      element.append(video, status, play);
+      if (video.error) showError();
+      return result;
+    }
+
+    async function startVideo(entry) {
+      const { video, status, play } = entry;
+      if (!video || video.error) return;
+      play.hidden = true;
+      try {
+        await video.play();
+      } catch (error) {
+        if (page !== entry || video.error) return;
+        status.textContent = "";
+        play.hidden = false;
+      }
+    }
+
+    function fadeVolume(video, target, after, duration = fadeMs) {
+      cancelAnimationFrame(volumeAnimations.get(video));
+      const from = video.volume;
+      if (target > 0) video.muted = false;
+      const start = performance.now();
+      function tick(now) {
+        const progress = Math.min(1, (now - start) / duration);
+        video.volume = from + (target - from) * progress;
+        if (progress < 1) volumeAnimations.set(video, requestAnimationFrame(tick));
+        else {
+          video.muted = target === 0;
+          after?.();
+        }
+      }
+      volumeAnimations.set(video, requestAnimationFrame(tick));
+    }
+
+    function syncControls() {
+      prev.disabled = turning || current === 0;
+      next.disabled = turning || current === assets.length - 1;
+      sound.disabled = turning;
+      byId("count").value = `${current + 1} / ${assets.length}`;
+      sound.setAttribute("aria-pressed", String(audible));
+      byId("sound-label").textContent = audible ? "有聲" : "靜音";
+    }
+
+    function begin(withSound) {
+      audible = withSound;
+      byId("intro").hidden = true;
+      for (const element of app.querySelectorAll("header, main, nav")) element.hidden = false;
+      if (!reducedMotion.matches && window.St?.PageFlip) installPageFlip();
+      else {
+        page = makePage(assets[0]);
+        stage.append(page.element);
+        primeNext();
+      }
+      ready = true;
+      syncControls();
+      next.focus();
+      if (audible) syncAmbient();
+    }
+
+    function cssTime(name) {
+      const value = getComputedStyle(stage).getPropertyValue(name).trim();
+      return parseFloat(value) * (value.endsWith("ms") ? 1 : 1000);
+    }
+
+    // Same version and single-page sizing as the original book.
+    function installPageFlip() {
+      const container = document.createElement("div");
+      container.className = "flip-book";
+      stage.classList.add("pageflip");
+      stage.append(container);
+      const slots = assets.map(asset => {
+        const slot = document.createElement("div");
+        slot.className = "page";
+        if (asset.image) slot.dataset.density = "hard";
+        container.append(slot);
+        return slot;
+      });
+      const loaded = new Map();
+      const dimensions = () => ({ width: Math.max(1, stage.clientWidth), height: Math.max(1, stage.clientHeight) });
+      const { width, height } = dimensions();
+      const ratio = width / height;
+      pageFlip = new window.St.PageFlip(container, {
+        width: Math.round(900 * ratio), height: 900,
+        size: "stretch",
+        minWidth: Math.max(1, width - 2), maxWidth: 4000,
+        minHeight: Math.max(1, height - 2), maxHeight: 4000,
+        showCover: false,
+        usePortrait: true,
+        autoSize: false,
+        drawShadow: false,
+        flippingTime: cssTime("--paper-turn"),
+        mobileScrollSupport: false
+      });
+
+      function loadNearby() {
+        for (const [index, entry] of loaded) {
+          if (Math.abs(index - current) <= 1) continue;
+          disposeVideo(entry.video);
+          entry.element.remove();
+          loaded.delete(index);
+        }
+        for (let index = current - 1; index <= current + 1; index++) {
+          if (!slots[index] || loaded.has(index)) continue;
+          const entry = makePage(assets[index]);
+          slots[index].append(entry.element);
+          loaded.set(index, entry);
+        }
+      }
+
+      function show(index) {
+        if (!assets[index] || current === index) return;
+        if (page.video) {
+          cancelAnimationFrame(volumeAnimations.get(page.video));
+          page.video.pause();
+        }
+        current = index;
+        loadNearby();
+        page = loaded.get(current);
+        if (page.video) {
+          page.video.muted = !audible;
+          page.video.volume = audible ? 1 : 0;
+          if (page.video.readyState) page.video.currentTime = 0;
+          startVideo(page);
+        }
+        syncAmbient();
+        syncControls();
+      }
+
+      loadNearby();
+      page = loaded.get(0);
+      pageFlip.on("flip", event => show(event.data));
+      pageFlip.on("changeState", ({ data }) => {
+        if (data === "flipping") playFlipSound();
+        turning = data === "flipping" || data === "user_fold";
+        syncControls();
+      });
+      pageFlip.loadFromHTML(slots);
+      new ResizeObserver(() => {
+        const size = dimensions();
+        const settings = pageFlip.getSettings();
+        settings.minWidth = Math.max(1, size.width - 2);
+        settings.minHeight = Math.max(1, size.height - 2);
+        pageFlip.update();
+      }).observe(stage);
+    }
+
+    function paperCurl(outgoing, direction, corner) {
+      const { width, height } = stage.getBoundingClientRect();
+      const sheet = document.createElement("div");
+      sheet.className = "turn-sheet fold-face";
+      sheet.setAttribute("aria-hidden", "true");
+      const fromRight = direction > 0;
+      const fromBottom = corner === "bottom";
+      const corners = [[0, 0], [width, 0], [width, height], [0, height]];
+      let nx;
+      let ny;
+      const depth = Math.min(width, height) * .17;
+      const distance = ([x, y]) => nx * x + ny * y;
+      function polygon(points) {
+        if (points.length < 3) return "polygon(0 0, 0 0, 0 0)";
+        const vertices = points.map(([x, y]) =>
+          `${(fromRight ? width - x : x).toFixed(1)}px ${(fromBottom ? height - y : y).toFixed(1)}px`
+        );
+        return "polygon(" + vertices.join(",") + ")";
+      }
+
+      function cut(points, boundary, sign) {
+        const result = [];
+        for (let i = 0; i < points.length; i++) {
+          const first = points[i];
+          const second = points[(i + 1) % points.length];
+          const a = distance(first) - boundary;
+          const b = distance(second) - boundary;
+          if (a * sign >= 0) result.push(first);
+          if ((a * sign < 0) !== (b * sign < 0)) {
+            const t = a / (a - b);
+            result.push([first[0] + (second[0] - first[0]) * t, first[1] + (second[1] - first[1]) * t]);
+          }
+        }
+        return result;
+      }
+
+      sheet.style.clipPath = polygon([]);
+      stage.append(sheet);
+      return {
+        draw(t, tilt = 0) {
+          const angle = Math.max(.055, Math.min(1.42, Math.atan2(height, width) + tilt));
+          nx = Math.cos(angle);
+          ny = Math.sin(angle);
+          const foldAngle = Math.atan2(fromBottom ? -ny : ny, fromRight ? -nx : nx);
+          sheet.style.setProperty("--fold-angle", `${foldAngle * 180 / Math.PI + 90}deg`);
+          const edge = (nx * width + ny * height) * t;
+          outgoing.element.style.clipPath = polygon(cut(corners, edge, 1));
+          const bend = depth * Math.sin(Math.PI * t);
+          const fold = cut(cut(corners, edge, -1), edge - bend, 1);
+          sheet.style.clipPath = polygon(fold.map(point => {
+            const offset = 2 * (edge - distance(point));
+            return [point[0] + nx * offset, point[1] + ny * offset];
+          }));
+        },
+        finish() {
+          sheet.remove();
+          outgoing.element.style.removeProperty("clip-path");
+        }
+      };
+    }
+
+    function prepareTurn(direction, corner) {
+      const target = current + direction;
+      const outgoing = page;
+      const incoming = makePage(assets[target]);
+      stage.prepend(incoming.element);
+      incoming.element.setAttribute("aria-hidden", "true");
+      outgoing.element.classList.add("outgoing");
+      if (reducedMotion.matches) return { target, outgoing, incoming };
+      const hard = assets[current].image || assets[target].image;
+      const effect = hard ? {
+        draw(progress, tilt = 0) {
+          const lift = tilt * progress * (corner === "bottom" ? -12 : 12);
+          outgoing.element.style.transform = `rotateY(${direction * -105 * progress}deg) rotateX(${lift}deg)`;
+        },
+        finish() { outgoing.element.style.removeProperty("transform"); }
+      } : paperCurl(outgoing, direction, corner);
+      outgoing.element.classList.toggle("reverse", direction < 0);
+      return { target, outgoing, incoming, effect, duration: cssTime(hard ? "--hard-turn" : "--paper-turn") };
+    }
+
+    function settle(prepared, from, to, tilt = 0) {
+      if (!prepared.effect || from === to) return Promise.resolve();
+      const duration = Math.max(100, prepared.duration * Math.abs(to - from));
+      const started = performance.now();
+      return new Promise(resolve => {
+        function draw(now) {
+          const t = Math.max(0, Math.min(1, (now - started) / duration));
+          prepared.effect.draw(from + (to - from) * t * t * (3 - 2 * t), tilt);
+          if (t < 1) requestAnimationFrame(draw);
+          else resolve();
+        }
+        requestAnimationFrame(draw);
+      });
+    }
+
+    function giveFirstFrameTime(video) {
+      if (!video || video.readyState >= 2 || video.error) return Promise.resolve();
+      return new Promise(resolve => {
+        const timeout = setTimeout(done, 180);
+        function done() {
+          clearTimeout(timeout);
+          video.removeEventListener("loadeddata", done);
+          video.removeEventListener("error", done);
+          resolve();
+        }
+        video.addEventListener("loadeddata", done);
+        video.addEventListener("error", done);
+      });
+    }
+
+    async function turn(direction, corner = verticalCorner, drag = null) {
+      const target = current + direction;
+      if (!ready || turning || gesture || !assets[target]) return;
+      if (pageFlip) {
+        if (direction > 0) pageFlip.flipNext(corner);
+        else pageFlip.flipPrev(corner);
+        return;
+      }
+      turning = true;
+      stage.removeAttribute("data-preview");
+      syncControls();
+      const prepared = drag?.prepared ?? prepareTurn(direction, corner);
+      const { outgoing, incoming, effect } = prepared;
+      playFlipSound();
+      if (!drag && effect) await giveFirstFrameTime(incoming.video);
+      if (outgoing.video && !outgoing.video.paused) {
+        if (outgoing.video.muted || !effect) outgoing.video.pause();
+        else fadeVolume(outgoing.video, 0, () => outgoing.video.pause());
+      }
+
+      await settle(prepared, drag?.progress ?? 0, 1, drag?.tilt);
+      effect?.finish();
+      disposeVideo(outgoing.video);
+      outgoing.element.remove();
+      incoming.element.removeAttribute("aria-hidden");
+      page = incoming;
+      current = target;
+      turning = false;
+      syncControls();
+      if (page.video) {
+        const active = page;
+        active.video.addEventListener("playing", () => {
+          if (page === active && !turning) primeNext();
+        }, { once: true });
+        startVideo(active);
+      } else {
+        primeNext();
+      }
+      syncAmbient();
+    }
+
+    byId("with-sound").addEventListener("click", () => begin(true));
+    byId("without-sound").addEventListener("click", () => begin(false));
+    prev.addEventListener("click", () => turn(-1));
+    next.addEventListener("click", () => turn(1));
+    function preview(direction, corner) {
+      const button = direction > 0 ? next : prev;
+      if (button.disabled || gesture || reducedMotion.matches) {
+        stage.removeAttribute("data-preview");
+        return;
+      }
+      stage.dataset.corner = corner;
+      stage.dataset.preview = direction > 0 ? "next" : "prev";
+    }
+
+    function pickCorner(event) {
+      const rect = stage.getBoundingClientRect();
+      return {
+        direction: event.clientX < rect.left + rect.width / 2 ? -1 : 1,
+        corner: event.clientY < rect.top + rect.height / 2 ? "top" : "bottom"
+      };
+    }
+
+    stage.addEventListener("pointerdown", event => {
+      if (pageFlip || !ready || turning || gesture || event.button !== 0 || event.target.closest("button")) return;
+      const { direction, corner } = pickCorner(event);
+      if (!assets[current + direction]) return;
+      const rect = stage.getBoundingClientRect();
+      gesture = {
+        direction, corner, pointerId: event.pointerId,
+        startX: event.clientX, startY: event.clientY,
+        width: rect.width, height: rect.height, progress: 0, tilt: 0
+      };
+      stage.removeAttribute("data-preview");
+      stage.setPointerCapture(event.pointerId);
+    });
+
+    stage.addEventListener("pointermove", event => {
+      const drag = gesture;
+      if (drag) {
+        if (drag.pointerId !== event.pointerId) return;
+        const travel = (drag.startX - event.clientX) * drag.direction;
+        const vertical = (event.clientY - drag.startY) * (drag.corner === "top" ? 1 : -1);
+        if (Math.hypot(travel, vertical) > 6) drag.moved = true;
+        if (reducedMotion.matches || (!drag.prepared && travel <= 6 && vertical <= 6)) return;
+        if (!drag.prepared) {
+          drag.prepared = prepareTurn(drag.direction, drag.corner);
+          stage.classList.add("dragging");
+        }
+        const lift = vertical / drag.height;
+        drag.tilt = Math.max(-.9, Math.min(.9, lift * 1.65));
+        drag.progress = Math.max(0, Math.min(.82, travel / drag.width + lift * .22));
+        drag.prepared.effect?.draw(drag.progress, drag.tilt);
+        return;
+      }
+
+      if (event.pointerType !== "mouse" || event.target.closest("button")) return;
+      const { direction, corner } = pickCorner(event);
+      verticalCorner = corner;
+      if (!pageFlip) preview(direction, corner);
+    });
+
+    stage.addEventListener("pointerleave", () => stage.removeAttribute("data-preview"));
+
+    async function releasePage(event) {
+      const drag = gesture;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      gesture = null;
+      stage.classList.remove("dragging");
+      const travel = (drag.startX - event.clientX) * drag.direction;
+      const movement = Math.hypot(travel, event.clientY - drag.startY);
+      if (event.type === "pointerup" && ((!drag.moved && movement <= 6) || travel >= drag.width * .33)) {
+        turn(drag.direction, drag.corner, drag.prepared ? drag : null);
+      } else if (drag.prepared) {
+        turning = true;
+        syncControls();
+        const { incoming, outgoing, effect } = drag.prepared;
+        await settle(drag.prepared, drag.progress, 0, drag.tilt);
+        effect?.finish();
+        outgoing.element.classList.remove("outgoing", "reverse");
+        disposeVideo(incoming.video);
+        incoming.element.remove();
+        turning = false;
+        syncControls();
+        primeNext();
+      }
+    }
+
+    for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      stage.addEventListener(name, releasePage);
+    }
+    for (const [button, direction] of [[prev, -1], [next, 1]]) {
+      button.addEventListener("pointerenter", event => {
+        if (event.pointerType === "mouse") preview(direction, verticalCorner);
+      });
+      button.addEventListener("pointerleave", () => stage.removeAttribute("data-preview"));
+    }
+    window.addEventListener("keydown", event => {
+      if (!ready || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        turn(event.key === "ArrowLeft" ? -1 : 1);
+      }
+    });
+
+    sound.addEventListener("click", () => {
+      audible = !audible;
+      syncControls();
+      if (page.video) fadeVolume(page.video, audible ? 1 : 0);
+      if (!audible) flipSound.pause();
+      syncAmbient();
+    });
+    full.disabled = !document.fullscreenEnabled;
+    full.addEventListener("click", async () => {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await app.requestFullscreen();
+      } catch (error) {
+        full.title = "此瀏覽器目前無法切換全螢幕";
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      full.textContent = document.fullscreenElement ? "退出全螢幕" : "全螢幕";
+    });
+  </script>
+</body>
+</html>
