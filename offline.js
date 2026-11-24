@@ -1,7 +1,7 @@
 (() => {
   const CACHE = 'floating-island-offline-v1';
   const required = [
-    'index.html', 'offline.js', 'manifest.json', 'page-flip.browser.js',
+    'index.html', 'offline.js', 'manifest.json',
     'icon-192.png', 'icon-512.png', 'media/cover.jpg', 'media/back-cover.jpg',
     'media/elmer-p-tw.ttf',
     ...Array.from({length: 12}, (_, i) => `media/${i + 1}.mov`)
